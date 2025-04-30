@@ -1,0 +1,4 @@
+# For more info on HTTP files go to https://aka.ms/vs/httpfile
+### Get all books
+GET https://localhost:7156/api/book
+Accept: application/json
