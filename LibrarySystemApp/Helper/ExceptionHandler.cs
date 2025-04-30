@@ -3,7 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Net;
 
 namespace LibrarySystemApp.Helper
-{
+{   
+    //EXCEPTION HANDLER COMMENT
     public class ExceptionHandler : IExceptionHandler
     {
         public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
