@@ -4,7 +4,9 @@ using LibrarySystemApp.Interfaces;
 using LibrarySystemApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
 
 namespace LibrarySystemApp.Controllers
 {
@@ -15,13 +17,13 @@ namespace LibrarySystemApp.Controllers
     {
         private readonly IAuthorRepository _authorRepository;
         private readonly IMapper _mapper;
-        private readonly IMemoryCache _memoryCache;
+        private readonly IDistributedCache _cache;
 
-        public AuthorController(IAuthorRepository authorRepository, IMapper mapper, IMemoryCache memoryCache)
+        public AuthorController(IAuthorRepository authorRepository, IMapper mapper, IDistributedCache cache)
         {
            _authorRepository = authorRepository;
             _mapper = mapper;
-            _memoryCache = memoryCache;
+            _cache = cache;
         }
         //GET REQUESTS
         //GET ALL AUTHORS
@@ -32,16 +34,27 @@ namespace LibrarySystemApp.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
             var cacheKey = $"All-Authors";
-            if(!_memoryCache.TryGetValue(cacheKey, out List<AuthorDto> authorsMap))
-            {
+            List<AuthorDto> authorsMap;
 
+            var authorsFromCache = await _cache.GetStringAsync(cacheKey);
+            if (authorsFromCache != null)
+            {
+                authorsMap = JsonSerializer.Deserialize<List<AuthorDto>>(authorsFromCache);
+            }
+            else
+            {
                 var authors = await _authorRepository.GetAuthors();
                 authorsMap = _mapper.Map<List<AuthorDto>>(authors);
+                var serializedAuthors = JsonSerializer.Serialize(authorsMap);
 
-                var cacheOptions = new MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(10))
-                    .SetSlidingExpiration(TimeSpan.FromMinutes(5));
-                _memoryCache.Set(cacheKey, authorsMap, cacheOptions);
+                var cacheOptions = new DistributedCacheEntryOptions()
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+                };
+
+                
+                await _cache.SetStringAsync(cacheKey, serializedAuthors, cacheOptions);
                
 
             }
@@ -59,6 +72,7 @@ namespace LibrarySystemApp.Controllers
             if(authorId == 0)
                 return BadRequest(ModelState);
             var cacheKey = $"Author-{authorId}";
+            <Author
             if(!_memoryCache.TryGetValue(cacheKey, out AuthorDto authorMap))
             {
                 var auth = await _authorRepository.AuthorExists(authorId);

@@ -5,6 +5,8 @@ using LibrarySystemApp.Interfaces;
 using LibrarySystemApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json;
 
 namespace LibrarySystemApp.Controllers
 {
@@ -14,11 +16,13 @@ namespace LibrarySystemApp.Controllers
     {
         private readonly IBorrowerRepository _borrowerRepository;
         private readonly IMapper _mapper;
+        private readonly IDistributedCache _cache;
 
-        public BorrowerController(IBorrowerRepository borrowerRepository, IMapper mapper)
+        public BorrowerController(IBorrowerRepository borrowerRepository, IMapper mapper, IDistributedCache cache)
         {
             _borrowerRepository = borrowerRepository;
             _mapper = mapper;
+            _cache = cache;
         } 
         //GET REQUESTS
         //GET ALL BORROWERS
@@ -28,12 +32,33 @@ namespace LibrarySystemApp.Controllers
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
-            var borrowers = await _borrowerRepository.GetBorrowers();
-            var borrowersMap = _mapper.Map<List<BorrowerDto>>(borrowers);
+
+            var cacheKey = "All-Borrowers";
+            List<BorrowerDto> borrowersMap;
+
+            var borrowerFromCache = await _cache.GetStringAsync(cacheKey);
+            if(borrowerFromCache != null)
+            {
+                borrowersMap = JsonSerializer.Deserialize<List<BorrowerDto>>(borrowerFromCache);
+            }
+            else
+            {
+                var borrowers = await _borrowerRepository.GetBorrowers();
+                borrowersMap = _mapper.Map<List<BorrowerDto>>(borrowers);
+
+                var serializedBorrowers = JsonSerializer.Serialize(borrowersMap);
+                var cacheOptions = new DistributedCacheEntryOptions()
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+                };
+
+                await _cache.SetStringAsync(cacheKey, serializedBorrowers, cacheOptions);
+            }
             return Ok(borrowersMap);
         }
         //GET Borrower BY ID
-        [HttpGet("{BorrowerId}")]
+        [HttpGet("{borrowerId}")]
         [ProducesResponseType(200, Type = typeof(BorrowerDto))]
         public async Task<IActionResult> GetBorrowerById([FromRoute] int borrowerId)
         {
@@ -44,8 +69,29 @@ namespace LibrarySystemApp.Controllers
             var auth = await _borrowerRepository.BorrowerExists(borrowerId);
             if (!auth)
                 return NotFound();
-            var borrower = await _borrowerRepository.GetBorrowerById(borrowerId);
-            var borrowerMap = _mapper.Map<BorrowerDto>(borrower);
+
+            var cacheKey = $"Borrower-{borrowerId}";
+            BorrowerDto borrowerMap;
+            var borrowerFromCache = await _cache.GetStringAsync(cacheKey);
+            if(borrowerFromCache !=null)
+            {
+                borrowerMap= JsonSerializer.Deserialize<BorrowerDto>(borrowerFromCache);
+            }
+            else
+            {
+                var borrower = await _borrowerRepository.GetBorrowerById(borrowerId);
+                borrowerMap = _mapper.Map<BorrowerDto>(borrower);
+
+                var serializedBorrower = JsonSerializer.Serialize(borrowerMap);
+
+                var cacheOptions = new DistributedCacheEntryOptions()
+                { 
+                    AbsoluteExpirationRelativeToNow= TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+                };
+                await _cache.SetStringAsync(cacheKey, serializedBorrower, cacheOptions);
+            }
+
             return Ok(borrowerMap);
         }
         //GET AUTHOR BY Name
@@ -58,6 +104,7 @@ namespace LibrarySystemApp.Controllers
             var borrower = await _borrowerRepository.GetBorrowerByName(FirstName, LastName);
             if (borrower == null)
                 return NotFound();
+
             var BorrowerMap = _mapper.Map<BorrowerDto>(borrower);
             return Ok(BorrowerMap);
         }
@@ -103,6 +150,8 @@ namespace LibrarySystemApp.Controllers
                 return NotFound();
             var borrowerMap = _mapper.Map<Borrower>(borrowerUpdate);
             var done = await _borrowerRepository.UpdateBorrower(bookIds, borrowerMap);
+            await _cache.RemoveAsync($"Borrower-{BorrowerId}");
+            
             return NoContent();
         }
     }

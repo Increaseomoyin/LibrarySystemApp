@@ -109,10 +109,31 @@ namespace LibrarySystemApp.Controllers
                 return BadRequest(ModelState);
             if (bookTitle==null)
                 return BadRequest(ModelState);
-         
 
-            var book = await _bookRepository.GetBookByTitle(bookTitle);
-            var bookMap = _mapper.Map<BookDto>(book);
+            var cacheKey = $"book-{bookTitle}";
+            BookDto bookMap;
+
+            var bookFromCache = await _cache.GetStringAsync(cacheKey);
+            if(bookFromCache !=null)
+            {
+                bookMap = JsonSerializer.Deserialize<BookDto>(bookFromCache); 
+            }
+            else
+            {
+                var book = await _bookRepository.GetBookByTitle(bookTitle);
+                bookMap = _mapper.Map<BookDto>(book);
+
+                var serializedBook = JsonSerializer.Serialize(bookMap);
+                var cacheOptions = new DistributedCacheEntryOptions()
+                { 
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+
+                };
+                await _cache.SetStringAsync(cacheKey, serializedBook, cacheOptions);
+
+            }
+
             return Ok(bookMap);
         }
         //CREATE REQUEST
@@ -159,6 +180,7 @@ namespace LibrarySystemApp.Controllers
                 return StatusCode(500, ModelState);
 
             }
+            await _cache.RemoveAsync($"book-{bookId}");
             return NoContent();
 
         }
