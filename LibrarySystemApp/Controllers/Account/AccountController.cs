@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.Rewrite;
 namespace LibrarySystemApp.Controllers.Account
 {
     [Route("api/[controller]")]
-    [ApiController] 
+    [ApiController]
+   
     public class AccountController :ControllerBase
     {   
         //TESTING 1 ADDITION
@@ -25,6 +26,7 @@ namespace LibrarySystemApp.Controllers.Account
             _signInManager = signInManager;
             _logger = logger;
         }//Login
+
         [HttpPost("Login")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> LoginUser([FromBody] LoginDto loginDto)
@@ -54,6 +56,8 @@ namespace LibrarySystemApp.Controllers.Account
         }
 
         //Register
+       
+
         [HttpPost("Register")]
         [ProducesResponseType(200)]
         public async Task<IActionResult> RegisterUser([FromBody] RegisterDto registerDto)

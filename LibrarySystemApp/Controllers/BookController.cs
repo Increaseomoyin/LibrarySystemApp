@@ -3,7 +3,9 @@ using LibrarySystemApp.DTO.Book;
 using LibrarySystemApp.Interfaces;
 using LibrarySystemApp.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
 
 namespace LibrarySystemApp.Controllers
 {
@@ -14,15 +16,15 @@ namespace LibrarySystemApp.Controllers
         private readonly IBookRepository _bookRepository;
         private readonly IMapper _mapper;
         private readonly ICategoryRepository _categoryRepository;
-        private readonly IMemoryCache _memoryCache;
+        private readonly IDistributedCache _cache;
 
-        public BookController(IBookRepository bookRepository, IMapper mapper, ICategoryRepository categoryRepository, IMemoryCache memoryCache)
+        public BookController(IBookRepository bookRepository, IMapper mapper, ICategoryRepository categoryRepository, IDistributedCache cache)
         {   
             //Another Comment
             _bookRepository = bookRepository;
             _mapper = mapper;
            _categoryRepository = categoryRepository;
-            _memoryCache = memoryCache;
+            _cache = cache;
         }
         //GET REQUESTS
         //GET ALL BOOKS
@@ -34,15 +36,28 @@ namespace LibrarySystemApp.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
             var cacheKey = $"All-Books";
-            if(!_memoryCache.TryGetValue(cacheKey, out List<BookDto> booksMap))
+            List<BookDto> booksMap;
+            var booksFromCache = await _cache.GetStringAsync(cacheKey);
+            if (booksFromCache != null)
             {
+                booksMap = JsonSerializer.Deserialize<List<BookDto>>(booksFromCache);
+            }
+            else
+            { 
+                //Get from Database
                 var books = await _bookRepository.GetBooks();
                 booksMap = _mapper.Map<List<BookDto>>(books);
 
-                var cacheOptions = new MemoryCacheEntryOptions()
-                    .SetAbsoluteExpiration(TimeSpan.FromMinutes(10))
-                    .SetSlidingExpiration(TimeSpan.FromMinutes(5));
-                _memoryCache.Set(cacheKey, booksMap, cacheOptions);
+                var serializedBooks = JsonSerializer.Serialize(booksMap);
+
+                var cacheOptions = new DistributedCacheEntryOptions()
+                {
+
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+                };
+
+               await  _cache.SetStringAsync(cacheKey,serializedBooks, cacheOptions);
             }
            
             return  Ok(booksMap);
@@ -60,16 +75,27 @@ namespace LibrarySystemApp.Controllers
             var bookExists = await _bookRepository.BookExists(bookId);
             if (!bookExists)
                 return NotFound();
+
             var cacheKey = $"Book-{bookId}";
-            if (!_memoryCache.TryGetValue(cacheKey, out BookDto bookMap))
+            BookDto bookMap;
+            var bookFromCache = await _cache.GetStringAsync(cacheKey);
+            if(bookFromCache != null)
+            {
+                bookMap = JsonSerializer.Deserialize<BookDto>(bookFromCache);
+            }
+            else
             {
                 var book = await _bookRepository.GetBookById(bookId);
                 bookMap = _mapper.Map<BookDto>(book);
 
-                var cacheOptions = new MemoryCacheEntryOptions()
-                   .SetAbsoluteExpiration(TimeSpan.FromMinutes(10))
-                   .SetSlidingExpiration(TimeSpan.FromMinutes(5));
-                _memoryCache.Set(cacheKey, bookMap, cacheOptions);
+                var serializedBook = JsonSerializer.Serialize(bookMap);
+                var cacheOptions = new DistributedCacheEntryOptions()
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(5)
+                };
+               
+                 await _cache.SetStringAsync(cacheKey, serializedBook, cacheOptions);
             }
             return Ok(bookMap);
         }

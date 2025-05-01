@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using StackExchange.Redis;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -81,7 +82,14 @@ builder.Services.AddInMemoryRateLimiting();
 builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
 //Exception Handling
 builder.Services.AddExceptionHandler<ExceptionHandler>();
-
+//Redis
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration["RedisCacheOptions:Configuration"];
+    options.InstanceName = builder.Configuration["RedisCacheOptions:InstanceName"];
+});
+//builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+//ConnectionMultiplexer.Connect(builder.Configuration["RedisCacheOpyions:Configuration"]));
 
 //SWAGGER
 
